@@ -1,0 +1,95 @@
+{
+  "extends": [
+    "tslint:latest",
+    "tslint-config-prettier",
+    "tslint-eslint-rules",
+    "tslint-config-airbnb"
+  ],
+  "rules": {
+    "member-ordering": [false],
+    "class-name": true,
+    "variable-name": [true, "allow-leading-underscore", "allow-snake-case"],
+    "import-name": [
+      true,
+      {
+        "stripe": "Stripe",
+        "k-oarouter": "KoaRouter"
+      }
+    ],
+    "comment-format": [true, "check-space"],
+    "indent": [true, "spaces"],
+    "one-line": [true, "check-open-brace", "check-whitespace"],
+    "no-var-keyword": true,
+    "ter-arrow-parens": [true, "always"],
+    "quotemark": [true, "double", "avoid-escape"],
+    "semicolon": [true, "always", "ignore-bound-class-methods"],
+    "no-implicit-dependencies": false,
+    "no-submodule-imports": [
+      false,
+      "src/*",
+      "usecases/*",
+      "errors/*",
+      "gateways/*",
+      "models/*",
+      "repositories/*",
+      "injection",
+      "utils/*",
+      "views/*",
+      "common/*"
+    ],
+    "whitespace": [
+      true,
+      "check-branch",
+      "check-decl",
+      "check-operator",
+      "check-module",
+      "check-separator",
+      "check-type"
+    ],
+    "interface-name": false,
+    "object-literal-sort-keys": false,
+    "typedef-whitespace": [
+      true,
+      {
+        "call-signature": "nospace",
+        "index-signature": "nospace",
+        "parameter": "nospace",
+        "property-declaration": "nospace",
+        "variable-declaration": "nospace"
+      },
+      {
+        "call-signature": "onespace",
+        "index-signature": "onespace",
+        "parameter": "onespace",
+        "property-declaration": "onespace",
+        "variable-declaration": "onespace"
+      }
+    ],
+    "no-internal-module": true,
+    "no-trailing-whitespace": true,
+    "no-null-keyword": false,
+    "prefer-const": true,
+    "jsdoc-format": true,
+    "no-empty-interface": false,
+    "no-empty": false,
+    "prefer-template": false,
+    "no-console": false,
+    "ter-indent": false,
+    "ter-computed-property-spacing": false,
+    "prefer-conditional-expression": false,
+    "prefer-array-literal": false,
+    "object-shorthand-properties-first": false,
+    "linebreak-style": [false, "LF"],
+    "max-line-length": [
+      true,
+      {
+        "limit": 200
+      }
+    ],
+    "align": false,
+    "trailing-comma": false,
+    "ordered-imports": false,
+    "no-increment-decrement": false,
+    "no-shadowed-variable": false
+  }
+}

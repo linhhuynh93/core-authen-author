@@ -1,0 +1,360 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Description:
+  Trigger S3 for convert videos
+
+Parameters:
+  Stage:
+    Description: Current State
+    Type: String
+  ApiUpdateMedia:
+    Description: Api update media
+    Type: String
+  InternalKey:
+    Description: Internal key for api
+    Type: String
+  AllowOrigins:
+    Description: Internal key for api
+    Type: CommaDelimitedList
+
+Conditions:
+  IsProd: !Equals [!Ref Stage, "production"]
+
+Resources:
+  HandleS3EventLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Timeout: 5
+      MemorySize: 512
+      Runtime: nodejs12.x
+      CodeUri: ./handleS3Event/
+      Handler: index.handler
+      Environment:
+        Variables:
+          REGION: !Sub "${AWS::Region}"
+          ROLE: !Sub "arn:aws:iam::${AWS::AccountId}:role/psyc-media-convert-role-${Stage}"
+          JOB_TEMPLATE: !Sub "arn:aws:mediaconvert:${AWS::Region}:${AWS::AccountId}:jobTemplates/psyc-media-convert-template-${Stage}"
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - mediaconvert:CreateJob
+            Resource:
+              - "arn:aws:mediaconvert:*:*:presets/*"
+              - !Sub "arn:aws:mediaconvert:${AWS::Region}:${AWS::AccountId}:jobTemplates/psyc-media-convert-template-${Stage}"
+              - "arn:aws:mediaconvert:*:*:queues/*"
+          - Effect: Allow
+            Action:
+              - iam:GetRole
+              - iam:PassRole
+            Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/psyc-media-convert-role-${Stage}"
+          - Effect: Allow
+            Action:
+              - mediaconvert:DescribeEndpoints
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - 's3:GetBucketNotification'
+              - 's3:PutBucketNotification'
+            Resource: !Sub 'arn:aws:s3:::psyc-media-uploads-${Stage}/videos/origin'
+          - Effect: Allow
+            Action:
+              - 'logs:CreateLogGroup'
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+            Resource: 'arn:aws:logs:*:*:*'
+  
+  LambdaInvokePermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      FunctionName: !GetAtt HandleS3EventLambda.Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !Sub "arn:aws:s3:::psyc-media-uploads-${Stage}"
+
+  # s3 for upload videos
+  S3InputVideo:
+    Type: AWS::S3::Bucket
+    DependsOn:
+      - LambdaInvokePermission
+    Properties:
+      BucketName: !Sub "psyc-media-uploads-${Stage}"
+      AccessControl: PublicRead
+      VersioningConfiguration:
+        Status: !If [IsProd, "Enabled", "Suspended"]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+        - AllowedHeaders: ['*']
+          AllowedMethods: [GET,HEAD,PUT,POST]
+          AllowedOrigins: !If [IsProd, !Ref AllowOrigins, ["*"]]
+          ExposedHeaders: [Date]
+          Id: myCORSRuleId1
+          MaxAge: '3600'
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: videos/origin/
+            Function: !GetAtt HandleS3EventLambda.Arn
+  
+  #@TODO: set life cycle to remove data
+  S3InputVideoPolicy:
+    Type: AWS::S3::BucketPolicy
+    DependsOn:
+      - S3InputVideo
+    Properties: 
+      Bucket: !Ref S3InputVideo
+      PolicyDocument:
+        Statement: 
+          Action:
+            - s3:GetObject
+            - s3:PutObject
+          Effect: "Allow"
+          Resource: !Sub "arn:aws:s3:::psyc-media-uploads-${Stage}/*"
+          Principal: "*"
+  
+  # role for media converter
+  MediaConvertRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "psyc-media-convert-role-${Stage}"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - mediaconvert.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: S3PsycFullAccess
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource: !Sub "arn:aws:s3:::psyc-media-uploads-${Stage}/videos/*"
+  
+  # job template
+  MediaConvertJobTemplate:
+    Type: AWS::MediaConvert::JobTemplate
+    Properties:
+      Name: !Sub "psyc-media-convert-template-${Stage}"
+      SettingsJson:
+        TimecodeConfig: {
+          "Source": "ZEROBASED"
+        }
+        AdAvailOffset: 0
+        OutputGroups:
+          - Name: File Group
+            OutputGroupSettings:
+              FileGroupSettings: {
+                Destination: !Sub "s3://psyc-media-uploads-${Stage}/videos/converted/"
+                }
+              Type: FILE_GROUP_SETTINGS
+            Outputs:
+              - ContainerSettings: {
+                  Container: RAW
+                }
+                VideoDescription: {
+                  ScalingBehavior: DEFAULT,
+                  TimecodeInsertion: DISABLED,
+                  AntiAlias: ENABLED,
+                  Sharpness: 50,
+                  CodecSettings: {
+                    Codec: FRAME_CAPTURE,
+                    FrameCaptureSettings: {
+                      FramerateNumerator: 1,
+                      FramerateDenominator: 5,
+                      MaxCaptures: 1,
+                      Quality: 80
+                    }
+                  },
+                  DropFrameTimecode: ENABLED,
+                  ColorMetadata: INSERT
+                }
+          - Name: DASH ISO
+            OutputGroupSettings:
+              DashIsoGroupSettings:  {
+                SegmentLength: 15,
+                Destination: !Sub "s3://psyc-media-uploads-${Stage}/videos/converted/",
+                FragmentLength: 2,
+                SegmentControl: SINGLE_FILE,
+                MpdProfile: MAIN_PROFILE,
+                HbbtvCompliance: HBBTV_1_5
+              }
+              Type: DASH_ISO_GROUP_SETTINGS
+            Outputs:
+              - ContainerSettings: {
+                  Container: MPD
+                }
+                VideoDescription: {
+                  ScalingBehavior: DEFAULT,
+                  TimecodeInsertion: DISABLED,
+                  AntiAlias: ENABLED,
+                  Sharpness: 50,
+                  CodecSettings: {
+                    Codec: H_264,
+                    H264Settings: {
+                      InterlaceMode: PROGRESSIVE,
+                      NumberReferenceFrames: 3,
+                      Syntax: DEFAULT,
+                      Softness: 0,
+                      GopClosedCadence: 1,
+                      GopSize: 90,
+                      Slices: 1,
+                      GopBReference: DISABLED,
+                      SlowPal: DISABLED,
+                      SpatialAdaptiveQuantization: ENABLED,
+                      TemporalAdaptiveQuantization: ENABLED,
+                      FlickerAdaptiveQuantization: DISABLED,
+                      EntropyEncoding: CABAC,
+                      Bitrate: 1500000,
+                      FramerateControl: INITIALIZE_FROM_SOURCE,
+                      RateControlMode: CBR,
+                      CodecProfile: MAIN,
+                      Telecine: NONE,
+                      MinIInterval: 0,
+                      AdaptiveQuantization: HIGH,
+                      CodecLevel: AUTO,
+                      FieldEncoding: PAFF,
+                      SceneChangeDetect: ENABLED,
+                      QualityTuningLevel: SINGLE_PASS,
+                      FramerateConversionAlgorithm: DUPLICATE_DROP,
+                      UnregisteredSeiTimecode: DISABLED,
+                      GopSizeUnits: FRAMES,
+                      ParControl: INITIALIZE_FROM_SOURCE,
+                      NumberBFramesBetweenReferenceFrames: 2,
+                      RepeatPps: DISABLED,
+                      DynamicSubGop: STATIC
+                    }
+                  },
+                  AfdSignaling: NONE,
+                  DropFrameTimecode: ENABLED,
+                  RespondToAfd: NONE,
+                  ColorMetadata: INSERT
+                }
+                NameModifier: video
+              - ContainerSettings: {
+                  Container: MPD
+                }
+                AudioDescriptions: [{
+                    AudioTypeControl: FOLLOW_INPUT,
+                    AudioSourceName: Audio Selector 1,
+                    CodecSettings: {
+                      Codec: AAC,
+                      AacSettings: {
+                        AudioDescriptionBroadcasterMix: NORMAL,
+                        Bitrate: 96000,
+                        RateControlMode: CBR,
+                        CodecProfile: LC,
+                        CodingMode: CODING_MODE_2_0,
+                        RawFormat: NONE,
+                        SampleRate: 48000,
+                        Specification: MPEG4
+                      }
+                    },
+                    LanguageCodeControl: FOLLOW_INPUT
+                  }]
+                NameModifier: audio
+  
+  # queue for update media status
+  ConvertMediaQueue:
+    Type: AWS::SQS::Queue
+    Properties: 
+      QueueName: !Sub "psyc-convert-media-queue-${Stage}"
+      ReceiveMessageWaitTimeSeconds: 3
+      MessageRetentionPeriod: 1800
+
+  # Cloudwatch Event for update media status
+  CloudwatchEventMediaConvert:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "psyc-event-media-convert-rule-${Stage}"
+      EventPattern: {
+        source: [
+          aws.mediaconvert
+        ],
+        detail-type: [
+          MediaConvert Job State Change
+        ],
+        detail: {
+          status: [
+            COMPLETE,
+            ERROR
+          ]
+        }
+      }
+      State: ENABLED
+      Targets: 
+        - Arn: !GetAtt ConvertMediaQueue.Arn
+          Id: !GetAtt ConvertMediaQueue.QueueName
+  
+  CloudwatchEventMediaConvertQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    DependsOn:
+      - ConvertMediaQueue
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action:
+              - SQS:SendMessage
+            Resource: !GetAtt ConvertMediaQueue.Arn
+      Queues:
+        - !Ref ConvertMediaQueue
+  
+  HandleUpdateMediaStatusLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      ContentUri: ./dependencies/
+      CompatibleRuntimes:
+        - nodejs12.x
+  
+  HandleUpdateMediaStatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./handleTriggerMediaConvert/
+      Handler: index.handler
+      Timeout: 5
+      Runtime: nodejs12.x
+      MemorySize: 512
+      Layers:
+        - !Ref HandleUpdateMediaStatusLayer
+      Events:
+        UpdateCompanyStatusEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ConvertMediaQueue.Arn
+      Environment:
+        Variables:
+          UPDATE_MEDIA_STATUS_API: !Sub "${ApiUpdateMedia}"
+          INTERNAL_KEY: !Sub "${InternalKey}"
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - sqs:ReceiveMessage
+            Resource: !GetAtt ConvertMediaQueue.Arn
+          - Effect: Allow
+            Action:
+              - mediaconvert:GetJob
+            Resource:
+              - !Sub "arn:aws:mediaconvert:${AWS::Region}:${AWS::AccountId}:jobs/*"
+          - Effect: Allow
+            Action:
+              - mediaconvert:DescribeEndpoints
+            Resource: "*"

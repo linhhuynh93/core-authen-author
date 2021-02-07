@@ -1,0 +1,12 @@
+export enum ALERT_TYPE {
+  SUCCESS = "SUCCESS",
+  INFO = "INFO",
+  WARNING = "WARNING",
+  CRITICAL = "CRITICAL",
+}
+
+export enum ALERT_STATUS {
+  NEW = "NEW",
+  VIEWED = "VIEWED",
+  DISMISSED = "DISMISSED",
+}

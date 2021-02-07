@@ -1,0 +1,123 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Create for Base Services
+  
+Parameters:
+  Stage:
+   Type: String
+   Default: test
+   Description: Create base-services for ENV or Stage
+   AllowedValues:
+    - test
+    - dev
+    - staging
+    - preprod
+    - production
+  ProjectName:
+    Type: String
+    Default: psynet 
+  NodeType:
+    Type: String
+    Default: "cache.t3.small"
+  ParamGroup:
+    Type: String
+    Default: "default.redis5.0"
+  RedisVer:
+    Type: String
+    Description: Define Redis Version
+    Default: "5.0.6"
+  NodeNumb:
+    Type: Number
+    Default: 2
+  SubnetAz01:
+    Type: String
+    Description: Get Subnet from VPC attache to LoadBalancer
+    Default: "Subnet-ID"
+  SubnetAz02:
+    Type: String
+    Description: Get Subnet from VPC attache to LoadBalancer
+    Default: "Subnet-ID"
+  Vpc:
+    Type: String
+    Description: Get VpcIP from NetworkBase Stack
+  RedisSecurityGroup:
+    Type: String
+    Description: Get RedisSecurityGroups from NetworkBase Stack 
+Resources:
+  RedisSubnetGroup:
+    Type: "AWS::ElastiCache::SubnetGroup"
+    Properties:
+      CacheSubnetGroupName: !Sub '${Stage}-${ProjectName}-redis-Subnet'
+      Description: Create SubnetGroup Base on VpcID and SgID on Base-Network
+      SubnetIds: 
+        - !Ref SubnetAz01
+        - !Ref SubnetAz02
+  Redis:
+    Type: "AWS::ElastiCache::ReplicationGroup"
+    DependsOn:
+      - RedisSubnetGroup
+    Properties:
+      AtRestEncryptionEnabled: True
+      #AuthToken: "String"
+      AutomaticFailoverEnabled: True
+      #AutoMinorVersionUpgrade: Boolean
+      CacheNodeType: !Ref NodeType
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      ReplicationGroupDescription: !Sub '${Stage}-${ProjectName}-redis'
+      Engine: redis
+      EngineVersion: !Ref RedisVer
+      NumCacheClusters: !Ref NodeNumb
+      Port: 6379
+      PreferredMaintenanceWindow: "thu:06:30-thu:07:30"
+      #SnapshotArns:
+      #  - String #This one use for restore from S3 Bucket
+      SnapshotRetentionLimit: 7
+      SnapshotWindow: "13:00-14:00"
+      SecurityGroupIds:
+        - !Ref 'RedisSecurityGroup'
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join ['', ['ECS', !Ref 'ProjectName', '-', 'Redis']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created redis cache for ECS cluster', !Ref 'ProjectName']]
+        -
+          Key: 'Env'
+          Value: !Ref 'Stage'
+
+###SSM Store Data
+  RedisArnSSM:
+    Type: AWS::SSM::Parameter
+    Properties: 
+      # AllowedPattern: String
+      Description: !Sub 'Push the ${Stage} Redis Arn to SSM'
+      Name: !Sub "/${ProjectName}/${Stage}/redis/arn"
+      Tags:
+        {
+          "Projectname" : !Ref ProjectName,
+          "ENV" : !Ref Stage
+        }
+      # Tier: String
+      Type: String
+      Value: !GetAtt Redis.PrimaryEndPoint.Address
+  RedisPortSSM:
+    Type: AWS::SSM::Parameter
+    Properties: 
+      # AllowedPattern: String
+      Description: !Sub 'Push the ${Stage} Redis Arn to SSM'
+      Name: !Sub "/${ProjectName}/${Stage}/redis/port"
+      Tags:
+        {
+          "Projectname" : !Ref ProjectName,
+          "ENV" : !Ref Stage
+        }
+      # Tier: String
+      Type: String
+      Value: !GetAtt Redis.PrimaryEndPoint.Port
+Outputs:
+  RedisAdress:
+    Description: Get Redis Address
+    Value: !GetAtt Redis.PrimaryEndPoint.Address
+  RedisPort:
+    Description: Get Redis Port
+    Value: !GetAtt Redis.PrimaryEndPoint.Port

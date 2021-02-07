@@ -1,0 +1,29 @@
+version: "3.5"
+
+services:
+  db:
+    image: mysql:8.0.21
+    restart: always
+    volumes:
+      - db_data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: 123123
+      MYSQL_USER: root
+      MYSQL_PASSWORD: 123123
+      MYSQL_DATABASE: wam
+    ports:
+      - "3306:3306"
+    command: --sql_mode="" --log_bin_trust_function_creators=ON
+
+
+  # Redis
+  redis:
+    image: redis:4.0.5-alpine
+    hostname: redis
+    ports:
+      - 6379:6379
+    restart: always
+    
+
+volumes:
+  db_data:

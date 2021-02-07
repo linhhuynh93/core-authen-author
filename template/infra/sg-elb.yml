@@ -1,0 +1,253 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Create SecurityGroup and ElasticLoadBalanceV2 Application LoadBalancer
+Parameters:
+  Stage:
+   Type: String
+   Default: test
+   Description: Create base for ENV or Stage
+   AllowedValues:
+    - test
+    - dev
+    - staging
+    - pre-prod
+    - production
+  Vpc:
+    Type: String
+    Description: Get VpcIP from NetworkBase Stack
+  EcsClusterName:
+    Type: String
+  SourceCidr:
+    Type: String
+    Description: Optional - CIDR/IP range for EcsPort and ElbPort - defaults to 0.0.0.0/0
+    Default: 0.0.0.0/0
+  EcsPort:
+    Type: String
+    Description: Optional - Security Group port to open on ECS instances - defaults to port 80
+    Default: '3007'
+  ElbPort:
+    Type: String
+    Description: Optional - Security Group port to open on ELB - port 80 will be open by default
+    Default: '80'
+  RedisPort:
+    Type: String
+    Description: Define allow port for Redis
+    Default: '6379'
+  SqlPort:
+    Type: String
+    Description: Define allow port for SQL
+    Default: '3306'   
+  TargetType:
+    Type: String
+    Description: Optional - the ALB target group target type, defaults to ip
+    Default: 'ip'
+  ELBHostRules1:
+    Type: String
+    Description: ELB Rules for Listener
+    Default: "psynet-api.devblock.io"
+  # ELBHostRules2:
+  #   Type: String
+  #   Description: ELB Rules for Listener
+  #   Default: "psynet-sync.devblock.io"
+  SubnetAz01:
+    Type: String
+    Description: Get Subnet from VPC attache to LoadBalancer
+    Default: "Subnet-ID"
+  SubnetAz02:
+    Type: String
+    Description: Get Subnet from VPC attache to LoadBalancer
+    Default: "Subnet-ID"
+#Conditions:
+  #CreateELB: !Equals [!Ref 'CreateElasticLoadBalancer', 'true']
+Resources:
+  EcsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS Allowed Ports
+      VpcId: !Ref 'Vpc'
+      SecurityGroupIngress:
+        - IpProtocol: 'tcp'
+          FromPort: !Ref 'EcsPort'
+          ToPort: !Ref 'EcsPort'
+          CidrIp: !Ref 'SourceCidr'
+        - IpProtocol: 'tcp'
+          FromPort: '1'
+          ToPort: '65535'
+          SourceSecurityGroupId: !Ref 'AlbSecurityGroup'
+        - IpProtocol: 'tcp'
+          FromPort: !Ref 'EcsPort'
+          ToPort: !Ref 'EcsPort'
+          CidrIp: !Ref 'SourceCidr'
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join [' ', ['ECS', !Ref 'EcsClusterName', '-', 'ECS SecurityGroup']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created for ECS cluster', !Ref 'EcsClusterName']]
+  AlbSecurityGroup:
+    #Condition: CreateELB
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ELB Allowed Ports
+      VpcId: !Ref 'Vpc'
+      SecurityGroupIngress:
+        - IpProtocol: 'tcp'
+          FromPort: !Ref 'ElbPort'
+          ToPort: !Ref 'ElbPort'
+          CidrIp: !Ref 'SourceCidr'
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join ['', ['ECS', !Ref 'EcsClusterName', '-', 'ALB SecurityGroup']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created for ECS cluster', !Ref 'EcsClusterName']]
+#### Configure Security Group for Redis ###
+  RedisSecurityGroup:
+    #Condition: CreateELB
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Redis ELB Allowed Ports
+      VpcId: !Ref 'Vpc'
+      SecurityGroupIngress:
+        - IpProtocol: 'tcp'
+          FromPort: !Ref 'RedisPort'
+          ToPort: !Ref 'RedisPort'
+          SourceSecurityGroupId: !Ref 'EcsSecurityGroup'
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join ['', ['Redis', !Ref 'EcsClusterName', '-', 'SecurityGroup']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created Redis for ECS cluster', !Ref 'EcsClusterName']]
+#### END Configure Security Group for Redis ### 
+#### Configure Security Group for Sql Database ###
+  SqlSecurityGroup:
+    #Condition: CreateELB
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SQL ELB Allowed Ports
+      VpcId: !Ref 'Vpc'
+      SecurityGroupIngress:
+        - IpProtocol: 'tcp'
+          FromPort: !Ref 'SqlPort'
+          ToPort: !Ref 'SqlPort'
+          SourceSecurityGroupId: !Ref 'EcsSecurityGroup'
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join ['', ['SQL', !Ref 'EcsClusterName', '-', 'SecurityGroup']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created SQL for ECS cluster', !Ref 'EcsClusterName']]
+#### END Configure Security Group for Sql Database ###           
+  DefaultTargetGroup:
+    #Condition: CreateELB
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:      
+      VpcId: !Ref 'Vpc'
+      Port: !Ref 'EcsPort'
+      TargetType: !Ref 'TargetType'
+      Protocol: HTTP
+      HealthCheckPath: "/healthcheck"
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join [' ', ['ECS', !Ref 'EcsClusterName', '-', 'TargetGroup']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created for ECS cluster', !Ref 'EcsClusterName']]
+  # SyncTargetGroup:
+  #   #Condition: CreateELB
+  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  #   Properties:      
+  #     VpcId: !Ref 'Vpc'
+  #     Port: !Ref 'EcsPort'
+  #     TargetType: !Ref 'TargetType'
+  #     Protocol: HTTP
+  #     HealthCheckIntervalSeconds: 60
+  #     HealthCheckPath: "/internals/healthcheck"
+  #     Tags:
+  #       -
+  #         Key: 'Name'
+  #         Value: !Join [' ', ['ECS', !Ref 'EcsClusterName', '-', 'TargetGroup']]
+  #       -
+  #         Key: 'Description'
+  #         Value: !Join [' ', ['Created for ECS cluster', !Ref 'EcsClusterName']]
+  EcsElasticLoadBalancer:
+    #Condition: CreateELB
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      SecurityGroups:
+        - !Ref 'AlbSecurityGroup'
+      Subnets:
+        - !Ref 'SubnetAz01'
+        - !Ref 'SubnetAz02'
+      Scheme: internet-facing
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join ['', ['ECS', !Ref 'EcsClusterName', '-', 'ALB']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created for ECS cluster', !Ref 'EcsClusterName']]
+  LoadBalancerListener:
+    #Condition: CreateELB
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref 'EcsElasticLoadBalancer'
+      Port: !Ref 'ElbPort'
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          Order: 1
+          TargetGroupArn: !Ref 'DefaultTargetGroup'
+  LoadBalancerListenerRules:
+    #Condition: CreateELB
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref 'LoadBalancerListener'
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref 'DefaultTargetGroup'
+      Conditions:
+        - Field: "host-header"
+          HostHeaderConfig:
+            Values: 
+              - !Ref 'ELBHostRules1'
+      Priority: 2
+  # LoadBalancerListenerRules02:
+  #   #Condition: CreateELB
+  #   Type: AWS::ElasticLoadBalancingV2::ListenerRule
+  #   Properties:
+  #     ListenerArn: !Ref 'LoadBalancerListener'
+  #     Actions:
+  #       - Type: forward
+  #         Order: 1
+  #         TargetGroupArn: !Ref 'SyncTargetGroup'
+  #     Conditions:
+  #       - Field: "host-header"
+  #         HostHeaderConfig:
+  #           Values: 
+  #             - !Ref 'ELBHostRules2'
+  #     Priority: 3
+Outputs:
+  # SyncTargetGroup:
+  #   Description: Get AnalyzeTargetGroup
+  #   Value: !Ref 'SyncTargetGroup' 
+  TargetGroup:
+    Description: Get TargetGroupID
+    Value: !Ref 'DefaultTargetGroup' 
+  EcsPort:
+    Description: Expose the Ecs Expose port
+    Value: !Ref 'EcsPort'
+  EcsSecurityGroup:
+    Description: Expose the ECS SecurityGroup for ECS services
+    Value: !Ref 'EcsSecurityGroup'
+  RedisSecurityGroup:
+    Description: Expose the Redis SecurityGroup for ECS services
+    Value: !Ref 'RedisSecurityGroup'
+  SqlSecurityGroup:
+    Description:  Expose the SqlDb SecurityGroup for ECS services
+    Value: !Ref 'SqlSecurityGroup'

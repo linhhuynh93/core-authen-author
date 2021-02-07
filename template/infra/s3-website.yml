@@ -1,0 +1,105 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create S3 Website for Host Static Site
+Parameters: 
+  ENV: 
+    Type: String
+    Default: dev
+    AllowedValues: 
+      - dev
+      - staging
+      - pre-pro
+      - production
+      - demo
+      - prod
+    Description: Enter dev, staging, pre-pro, production to deploy each S3-Website
+  ProjectName:
+    Type: String
+    Description: Enter project name
+Resources:
+  S3Bucketmain:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicRead
+      BucketName: !Sub '${ENV}-${ProjectName}-devblock'
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      CorsConfiguration:
+        CorsRules:
+        - AllowedHeaders: ['*']
+          AllowedMethods: ['GET','HEAD','PUT','POST','DELETE']
+          AllowedOrigins: ['*']
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Sub '${ENV}-${ProjectName}'
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created for S3 Static Website', !Sub '${ENV}-${ProjectName}']]
+        -
+          Key: 'Environment'
+          Value: !Ref 'ENV'
+    DeletionPolicy: Delete
+  DefaultBucketPolicy: 
+    Type: AWS::S3::BucketPolicy
+    Properties: 
+      Bucket: !Sub '${ENV}-${ProjectName}-devblock'
+      PolicyDocument: 
+        Statement: 
+          Action: 
+            - "s3:GetObject"
+          Effect: "Allow"
+          Resource: !Sub "arn:aws:s3:::${ENV}-${ProjectName}-devblock/*"
+          Principal: "*"
+
+  cloudfrontdistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: True
+        HttpVersion: "http2"
+        Origins: [
+          {
+          DomainName: !Sub '${ENV}-${ProjectName}-devblock.s3-website-us-west-2.amazonaws.com',
+          Id: !Ref S3Bucketmain,
+          CustomOriginConfig: {
+            OriginProtocolPolicy: "http-only"
+            }
+          }
+        ]
+        DefaultCacheBehavior:
+          AllowedMethods: [
+            "GET",
+            "HEAD",
+            "OPTIONS",
+            "PUT",
+            "PATCH",
+            "POST",
+            "DELETE"
+            ]
+          ForwardedValues:
+            QueryString: false
+          TargetOriginId: !Ref S3Bucketmain
+          ViewerProtocolPolicy: "redirect-to-https"
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join [' ', ['CloudFront-', !Ref 'S3Bucketmain']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Create CloudFront for S3 ', !Ref 'S3Bucketmain']]
+        -
+          Key: 'Environment'
+          Value: !Ref 'ENV'
+    DeletionPolicy: Delete
+Outputs:
+  WebsiteURL:
+    Value: !GetAtt [S3Bucketmain, WebsiteURL]
+    Description: URL for website hosted on S3
+  S3BucketSecureURL: 
+    Value: !Join ['', ['https://', !GetAtt [S3Bucketmain, DomainName]]]
+    Description: Name of S3 bucket to hold website content
+  CFDistributedID:
+    Value: !Ref cloudfrontdistribution
+  CFWebURL:
+    Value: !GetAtt cloudfrontdistribution.DomainName

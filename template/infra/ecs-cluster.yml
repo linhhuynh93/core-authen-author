@@ -1,0 +1,192 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS CloudFormation template to create a TaskDefinition for ECS
+Parameters:
+  Stage:
+    Type: String
+    Default: test
+    AllowedValues:
+      - test
+      - dev
+      - staging
+      - pre-pro
+      - production
+  EcsClusterName:
+    Type: String
+    Description: Define Cluster Name
+    Default: psynet
+  Task01:
+    Type: String
+    Description: Create Family name for TaskDefinition01
+    Default: api
+  IgnoreHealthcheck:
+    Type: Number
+    Default: 300
+  TargetGroup:
+    Type: String
+    Description: Get TargetGroupArn from SG-ELB-Configuration
+    Default: "TargetGroupArn"
+  EcsPort:
+    Type: Number
+    Description: The port on the container to associate with the load balancer
+    Default: 3007
+  RoleArn:
+    Type: String
+    Description: Get RoleArn from root
+    Default: "arn:aws:iam::864838819952:role/EcsRolesExecuteOpt-in"
+  SubnetAz01:
+    Type: String
+    Description: Get SubnetAz from Base Network
+    Default: "Subnet-ID"
+  SubnetAz02:
+    Type: String
+    Description: Get SubnetAz from Base Network
+    Default: "Subnet-ID"
+  EcsSG1:
+    Type: String
+    Description: Get ECS SecurityGroups from SG-ELB
+    Default: "SecurityGroup-ID"
+  CPU:
+    Type: String
+    Description: Set the CPU for TaskDefinition
+    Default: 256
+    AllowedValues:
+      - 256
+      - 512
+      - 1024
+      - 2048
+  MEM:
+    Type: String
+    Description: Set the Memory for TaskDefinition
+    Default: 512
+    AllowedValues:
+      - 512
+      - 1024
+      - 2048
+      - 3072
+  EcrImage:
+    Type: String
+    Description: Get ECR ARN from Base
+    Default: "ImageURL:Version"
+  Redis:
+    Type: String
+    Description: Get Redis ENDPOINT from ServiceBase
+Resources:  
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${Stage}-${EcsClusterName}'
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join [' ', ['ECS', !Ref 'EcsClusterName', '-', 'Cluster']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created for ECS cluster', !Ref 'EcsClusterName']]   
+  EcsServices:
+    Type: "AWS::ECS::Service"
+    Properties:
+      Cluster: !Ref EcsCluster
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      #EnableECSManagedTags: True
+      HealthCheckGracePeriodSeconds: !Ref IgnoreHealthcheck
+      LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: !Sub ${Stage}-${EcsClusterName}-${Task01}
+          ContainerPort: !Ref EcsPort
+          TargetGroupArn: !Ref TargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref EcsSG1
+          Subnets:
+            - !Ref SubnetAz01
+            - !Ref SubnetAz02
+      SchedulingStrategy: REPLICA
+      ServiceName: !Sub '${Stage}-${EcsClusterName}-Services'
+      # Tags:
+      #   -
+      #     Key: 'Name'
+      #     Value: !Join [' ', ['ECS', !Ref 'EcsClusterName', '-', 'Services']]
+      #   -
+      #     Key: 'Description'
+      #     Value: !Join [' ', ['Created for ECS Taskdifination', !Ref 'EcsClusterName']]      
+      TaskDefinition: !Ref TaskDefine01
+  TaskDefine01:
+    Type: "AWS::ECS::TaskDefinition"
+    Properties:
+      ContainerDefinitions:
+        - 
+          Name: !Sub ${Stage}-${EcsClusterName}-${Task01}
+          Image: !Ref EcrImage
+          #Cpu: 128
+          #Memory: "0.25GB"
+          Secrets:
+            - Name: DB_HOST
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${EcsClusterName}/${Stage}/mysql/url"
+            - Name: DB_PASSWORD
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${EcsClusterName}/${Stage}/mysql/password"
+            - Name: DB_USER
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${EcsClusterName}/${Stage}/mysql/user"
+            - Name: REDIS_ENDPOINT
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${EcsClusterName}/${Stage}/redis/arn"
+            - Name: AWS_ACCESS_KEY_ID
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${EcsClusterName}/${Stage}/aws/id"
+            - Name: AWS_SECRET_ACCESS_KEY
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${EcsClusterName}/${Stage}/aws/secret"               
+          Environment:
+            - Name: REDIS_PORT
+              Value: 6379          
+            - Name: DB_PORT
+              Value: 3306           
+            - Name: DB_DATABASE
+              Value:  "psynet"          
+            - Name: NODE_ENV
+              Value: "development"
+            - Name: SERVER_PORT
+              Value: "3007"
+            - Name: JWT_PRIVATE_KEY
+              Value: "psychotherapynetwork"
+            - Name: JWT_EXPRIRES_IN
+              Value: "480"
+            - Name: AWS_DEFAULT_REGION
+              Value: "us-west-2"
+          PortMappings: 
+            - ContainerPort: !Ref EcsPort
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: True
+              awslogs-group: !Sub '/ecs/${Stage}-${EcsClusterName}'
+              awslogs-region: "us-west-2"
+              awslogs-stream-prefix: "ecs"
+      Cpu: !Ref CPU
+      Memory: !Ref MEM
+      ExecutionRoleArn: !Ref RoleArn
+      Family: !Sub ${Stage}-${EcsClusterName}-${Task01}
+      #IpcMode: String
+      NetworkMode: awsvpc
+      #ProxyConfiguration:
+      #  ProxyConfiguration
+      RequiresCompatibilities:
+        - "FARGATE"
+      TaskRoleArn: !Ref RoleArn
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join ['', ['ECS', !Ref 'EcsClusterName', '-', 'TaskDefinition']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created for ECS Taskdifination', !Ref 'EcsClusterName']]
+      
+  
+  
+  

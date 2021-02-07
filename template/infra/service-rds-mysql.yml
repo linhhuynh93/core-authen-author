@@ -1,0 +1,218 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Create for Base Services
+  
+Parameters:
+  Stage:
+   Type: String
+   Default: test
+   Description: Create base-services for ENV or Stage
+   AllowedValues:
+    - test
+    - dev
+    - staging
+    - preprod
+    - production
+  ProjectName:
+    Type: String
+    Default: psynet 
+  DBInstanceClass:
+    Description: 'The instance type of database server.'
+    Type: String
+    Default: 'db.t3.small'
+  SubnetAz01:
+    Type: String
+    Description: Get Subnet from VPC attache to LoadBalancer
+    Default: "Subnet-ID"
+  SubnetAz02:
+    Type: String
+    Description: Get Subnet from VPC attache to LoadBalancer
+    Default: "Subnet-ID"
+  Vpc:
+    Type: String
+    Description: Get VpcIP from NetworkBase Stack
+  SqlSecurityGroup:
+    Type: String
+    Description: Get SqlSecurityGroup from NetworkBase Stack  
+  DBSnapshotIdentifier:
+    Description: 'Optional name or Amazon Resource Name (ARN) of the DB snapshot from which you want to restore (leave blank to create an empty database).'
+    Type: String
+    Default: ''
+  DBAllocatedStorage:
+    Description: 'The allocated storage size, specified in GB (ignored when DBSnapshotIdentifier is set, value used from snapshot).'
+    Type: Number
+    Default: 30
+    MinValue: 5
+    MaxValue: 16384
+  SqlKmsKeyId:
+    Type: String
+    Description: Get KMS key ID from AWS (KMS Arn)
+    Default: ''
+  DBMasterUsername:
+    Type: String
+    Description: Define Db Admin username
+    Default: "psynetadmin"
+  DBMasterUserPassword:
+    Type: String
+    Description: Define Db Admin Pwd
+    Default: 'psynet2020'
+  DbRegion:
+    Type: String
+    Description: Define Db Region
+    Default: "us-west-2"
+  DBName:
+    Type: String
+    Description: Define Db Region
+    Default: "psynet"
+  DBBackupRetentionPeriod:
+    Description: 'The number of days to keep snapshots of the database.'
+    Type: Number
+    MinValue: 0
+    MaxValue: 35
+    Default: 7
+  DBMultiAZ:
+    Description: 'Specifies if the database instance is deployed to multiple Availability Zones for HA.'
+    Type: String
+    Default: false
+    AllowedValues: [true, false]
+  DBOptionGroupName:
+    Description: 'Optional name of an existing DB option group.'
+    Type: String
+    Default: ''
+  DBParameterGroupName:
+    Description: 'Optional name of an existing DB parameter group.'
+    Type: String
+    Default: ''
+  EngineVersion:
+    Description: 'MySQL version.'
+    Type: String
+    Default: '8.0.20'
+    AllowedValues: ['8.0.20', '5.7.25', '5.7.21', '5.6.41', '5.5.61']
+  EnableIAMDatabaseAuthentication:
+    Description: 'Enable mapping of AWS Identity and Access Management (IAM) accounts to database accounts (https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/UsingWithRDS.IAMDBAuth.html).'
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+  PreferredBackupWindow:
+    Description: 'The daily time range in UTC during which you want to create automated backups.'
+    Type: String
+    Default: '11:54-13:24'
+  PreferredMaintenanceWindow:
+    Description: The weekly time range (in UTC) during which system maintenance can occur.
+    Type: String
+    Default: 'wed:02:00-wed:03:30'
+Conditions:
+  HasKmsKey: !Not [!Equals [!Ref SqlKmsKeyId, '']]
+  HasDBSnapshotIdentifier: !Not [!Equals [!Ref DBSnapshotIdentifier, '']]
+  HasDBOptionGroupName: !Not [!Equals [!Ref DBOptionGroupName, '']]
+  HasDBParameterGroupName: !Not [!Equals [!Ref DBParameterGroupName, '']]
+  HasKmsKeyAndNotDBSnapshotIdentifier: !And [!Condition HasKmsKey, !Not [!Condition HasDBSnapshotIdentifier]]
+Resources:
+  SqlDbParamGroups:
+    Type: "AWS::RDS::DBParameterGroup"
+    Properties:
+      Description: "Change log_bin_trust_function_creators"
+      Family: mysql8.0
+      Parameters:
+        log_bin_trust_function_creators: 1
+  SqlDbSubnetGroups:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties:
+      DBSubnetGroupDescription: !Ref 'AWS::StackName'
+      SubnetIds: #required
+        - !Ref SubnetAz01
+        - !Ref SubnetAz02
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join ['', ['ECS', !Ref 'ProjectName', '-', 'SqlSubnetGroups']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created SqlSubnetGroups for ECS cluster', !Ref 'ProjectName']]
+        -
+          Key: 'Env'
+          Value: !Ref 'Stage'
+  DBInstance:
+    DeletionPolicy: Snapshot # default
+    UpdateReplacePolicy: Snapshot
+    Type: 'AWS::RDS::DBInstance'
+    Properties:
+      AllocatedStorage: !If [HasDBSnapshotIdentifier, !Ref 'AWS::NoValue', !Ref DBAllocatedStorage]
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: true
+      BackupRetentionPeriod: !Ref DBBackupRetentionPeriod
+      CopyTagsToSnapshot: true
+      DBInstanceClass: !Ref DBInstanceClass
+      DBName: !If [HasDBSnapshotIdentifier, !Ref 'AWS::NoValue', !Ref DBName]
+      DBParameterGroupName: !If [HasDBParameterGroupName, !Ref DBParameterGroupName, !Ref 'SqlDbParamGroups']
+      DBSnapshotIdentifier: !If [HasDBSnapshotIdentifier, !Ref DBSnapshotIdentifier, !Ref 'AWS::NoValue']
+      DBSubnetGroupName: !Ref SqlDbSubnetGroups
+      EnableIAMDatabaseAuthentication: !Ref EnableIAMDatabaseAuthentication
+      Engine: mysql
+      EngineVersion: !If [HasDBSnapshotIdentifier, !Ref 'AWS::NoValue', !Ref EngineVersion]
+      KmsKeyId: !If [HasKmsKeyAndNotDBSnapshotIdentifier, !Ref SqlKmsKeyId, !Ref 'AWS::NoValue']
+      MasterUsername: !If [HasDBSnapshotIdentifier, !Ref 'AWS::NoValue', !Ref DBMasterUsername]
+      MasterUserPassword: !If [HasDBSnapshotIdentifier, !Ref 'AWS::NoValue', !Ref DBMasterUserPassword]
+      MultiAZ: !Ref DBMultiAZ
+      OptionGroupName: !If [HasDBOptionGroupName, !Ref DBOptionGroupName, !Ref 'AWS::NoValue']
+      PreferredBackupWindow: !Ref PreferredBackupWindow
+      PreferredMaintenanceWindow: !Ref PreferredMaintenanceWindow
+      StorageType: gp2
+      StorageEncrypted: !If [HasDBSnapshotIdentifier, !Ref 'AWS::NoValue', !If [HasKmsKey, true, false]]
+      VPCSecurityGroups:
+      - !Ref SqlSecurityGroup
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join ['', ['ECS', !Ref 'ProjectName', '-', 'SQL']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created SQL Db for ECS cluster', !Ref 'ProjectName']]
+        -
+          Key: 'Env'
+          Value: !Ref 'Stage'
+###SSM Store Data
+  SqlArnSSM:
+    Type: AWS::SSM::Parameter
+    Properties: 
+      #AllowedPattern: String
+      Description: !Sub 'Push the ${Stage} mysql Arn to SSM'
+      Name: !Sub "/${ProjectName}/${Stage}/mysql/url"
+      Tags:
+        {
+          "Projectname" : !Ref ProjectName,
+          "ENV" : !Ref Stage
+        }
+      # Tier: String
+      Type: String
+      Value: !GetAtt DBInstance.Endpoint.Address
+  SqlUserSM:
+    Type: AWS::SSM::Parameter
+    Properties: 
+      Description: !Sub 'Push the ${Stage} mysql Username to SSM'
+      Name: !Sub "/${ProjectName}/${Stage}/mysql/user"
+      Tags:
+        {
+          "Projectname" : !Ref ProjectName,
+          "ENV" : !Ref Stage
+        }
+      Type: String
+      Value: !Ref 'DBMasterUsername'
+  SqlUserPasswordSM:
+    Type: AWS::SSM::Parameter
+    Properties: 
+      Description: !Sub 'Push the ${Stage} mysql Pwd to SSM'
+      Name: !Sub "/${ProjectName}/${Stage}/mysql/password"
+      Tags:
+        {
+          "Projectname" : !Ref ProjectName,
+          "ENV" : !Ref Stage
+        }
+      Type: String
+      Value: !Ref 'DBMasterUserPassword'
+Outputs:
+  SqlAdress:
+    Description: Get Sql Db Address
+    Value: !GetAtt DBInstance.Endpoint.Address
+  SqlPort:
+    Description: Get Sql Db Port
+    Value: !GetAtt DBInstance.Endpoint.Port

@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "resolveJsonModule": true,
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "target": "es6",
+    "noImplicitAny": true,
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "outDir": "dist",
+    "baseUrl": ".",
+    "rootDirs": ["src", "dist"],
+    "experimentalDecorators": true,
+    "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "*": ["node_modules/*", "src/types/*"],
+      "src/*": ["src/*"],
+      "usecases/*": ["src/usecases/*"],
+      "errors/*": ["src/errors/*"],
+      "gateways/*": ["src/domain/gateways/*"],
+      "models/*": ["src/domain/models/*"],
+      "repositories/*": ["src/domain/repositories/*"],
+      "injection/*": ["src/injection/*"],
+      "utils/*": ["src/utils/*"],
+      "views/*": ["src/view-models/*"],
+      "common/*": ["src/common/*"]
+    }
+  },
+  "include": [
+    "src/*.ts",
+    "src/**/*.ts",
+    "tests/*.ts",
+    "tests/**/*.ts",
+    "src/tests/teardown.js"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

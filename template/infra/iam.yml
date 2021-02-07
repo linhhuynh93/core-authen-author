@@ -1,0 +1,132 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Create IAM for Project
+  
+# Parameters:
+#   RootAcc:
+#     Type: String
+#     Default: "arn:aws:iam::111122223333:root"
+#     Description: Define the Root Account for Admin KMS key
+#   AdminAcc:
+#     Type: String
+#     Default: "arn:aws:iam::123456789012:user/Alice"
+#     Description: Define the Root Account for Admin KMS key
+Resources:
+  ECSRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2008-10-17
+        Statement:
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service: ecs.amazonaws.com
+            Action: 'sts:AssumeRole'
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'            
+      Description: "Create for manage ECS and called AWS through ECS"
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceRole'
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+  # KmsEcs:
+  #   Type: AWS::KMS::Key
+  #   Properties:
+  #     Description: A symmetric CMK Create for RDS
+  #     KeyPolicy:
+  #       Version: '2012-10-17'
+  #       Id: key-default-ecs-01
+  #       Statement:
+  #         - Sid: Enable IAM User Permissions
+  #           Effect: Allow
+  #           Principal:
+  #             AWS: !Ref RootAcc
+  #           Action: kms:*
+  #           Resource: '*'
+  #         - Sid: Allow administration of the key
+  #           Effect: Allow
+  #           Principal:
+  #             AWS: !Ref AdminAcc
+  #           Action:
+  #           - kms:Create*
+  #           - kms:Describe*
+  #           - kms:Enable*
+  #           - kms:List*
+  #           - kms:Put*
+  #           - kms:Update*
+  #           - kms:Revoke*
+  #           - kms:Disable*
+  #           - kms:Get*
+  #           - kms:Delete*
+  #           - kms:ScheduleKeyDeletion
+  #           - kms:CancelKeyDeletion
+  #           Resource: '*'
+  #         - Sid: Allow use of the key
+  #           Effect: Allow
+  #           Principal:
+  #             AWS: !GetAtt ECSRole.Arn
+  #           Action:
+  #           - kms:DescribeKey
+  #           - kms:Encrypt
+  #           - kms:Decrypt
+  #           - kms:ReEncrypt*
+  #           - kms:GenerateDataKey
+  #           - kms:GenerateDataKeyWithoutPlaintext
+  #           Resource: '*'
+  # KmsRds:
+  #   Type: AWS::KMS::Key
+  #   Properties:
+  #     Description: A symmetric CMK Create for RDS
+  #     KeyPolicy:
+  #       Version: '2012-10-17'
+  #       Id: key-default-rds-01
+  #       Statement:
+  #         - Sid: Enable IAM User Permissions
+  #           Effect: Allow
+  #           Principal:
+  #             AWS: !Ref RootAcc
+  #           Action: kms:*
+  #           Resource: '*'
+  #         - Sid: Allow administration of the key
+  #           Effect: Allow
+  #           Principal:
+  #             AWS: !Ref AdminAcc
+  #           Action:
+  #           - kms:Create*
+  #           - kms:Describe*
+  #           - kms:Enable*
+  #           - kms:List*
+  #           - kms:Put*
+  #           - kms:Update*
+  #           - kms:Revoke*
+  #           - kms:Disable*
+  #           - kms:Get*
+  #           - kms:Delete*
+  #           - kms:ScheduleKeyDeletion
+  #           - kms:CancelKeyDeletion
+  #           Resource: '*'
+  #         - Sid: Allow use of the key
+  #           Effect: Allow
+  #           Principal:
+  #             AWS: !GetAtt ECSRole.Arn
+  #           Action:
+  #           - kms:DescribeKey
+  #           - kms:Encrypt
+  #           - kms:Decrypt
+  #           - kms:ReEncrypt*
+  #           - kms:GenerateDataKey
+  #           - kms:GenerateDataKeyWithoutPlaintext
+  #           Resource: '*'
+
+Outputs:
+ EcsIamRoles:
+  Description: ECS IAM EcsIamRoles
+  Value: !GetAtt ECSRole.Arn
+#  KmsEcs:
+#   Description: Name of KMS Encrypt MMS for ECS 
+#   Value: !GetAtt KmsEcs.Arn
+#  KmsRds:
+#   Description: Name of KMS Enrypt RDS 
+#   Value: !GetAtt KmsRds.Arn

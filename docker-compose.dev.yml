@@ -1,0 +1,40 @@
+version: "3.5"
+
+services:
+  db:
+    image: mysql:5.7.28
+    restart: always
+    volumes:
+      - db_data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: 123123
+      MYSQL_USER: root
+      MYSQL_PASSWORD: 123123
+      MYSQL_DATABASE: wam
+    ports:
+      - "3306:3306"
+    command: --sql_mode=""
+
+  app:
+    depends_on:
+      - db
+    build:
+      context: .
+    restart: always
+    volumes:
+      - ./dist:/opt/app
+    environment:
+      NODE_ENV: development
+      SERVER_PORT: 3007
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: 123123
+      DB_DATABASE: wam
+    ports:
+      - "8087:3007"
+    links:
+      - db
+
+volumes:
+  db_data:

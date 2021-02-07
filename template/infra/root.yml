@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS CloudFormation create Network Stack VPC, Subnet, IG, Route tables, NAT,
+Parameters:
+  Stage:
+   Type: String
+   Default: test
+   Description: Create base for ENV or Stage
+   AllowedValues:
+    - test
+    - dev
+    - staging
+    - pre-prod
+    - production
+  ProjectName:
+    Type: String
+    Default: psynet
+  EcrImage:
+    Type: String
+    Default: "736486258219.dkr.ecr.us-west-2.amazonaws.com/psynet-api/dev"
+  # RoleArn:
+  #   Type: String
+  #   Default: "arn:aws:iam::864838819952:role/EcsRolesExecuteOpt-in"
+Resources:
+### Create VPC ###
+  NetworkBase:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "https://psynet-devblock.s3-us-west-2.amazonaws.com/network.yml"
+      Parameters:
+        Stage: !Ref Stage
+        ProjectName: !Ref ProjectName   
+### Create Security & Load balancer ###
+  SgElb:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - NetworkBase
+    Properties:
+      TemplateURL: "https://psynet-devblock.s3-us-west-2.amazonaws.com/sg-elb.yml"
+      Parameters:
+        Stage: !Ref Stage
+        EcsClusterName: !Ref ProjectName
+        Vpc: !GetAtt NetworkBase.Outputs.vpcID
+        SubnetAz01: !GetAtt NetworkBase.Outputs.SubnetAz01
+        SubnetAz02: !GetAtt NetworkBase.Outputs.SubnetAz02
+  ### IAM Roles
+  IAM: 
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - NetworkBase
+      - SgElb
+    Properties:
+      TemplateURL: "https://psynet-devblock.s3-us-west-2.amazonaws.com/iam.yml"
+      # Parameters:
+      #   RootAcc: "arn:aws:iam::265225121692:user/Sven"
+      #   AdminAcc: "arn:aws:iam::265225121692:user/cloudformation"
+  # Create Base Services RDS + Redis ###
+  ServicesRedis:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - SgElb
+      - NetworkBase      
+    Properties:
+      TemplateURL: "https://psynet-devblock.s3-us-west-2.amazonaws.com/service-redis.yml"
+      Parameters:
+        Stage: !Ref Stage
+        ProjectName: !Ref ProjectName
+        Vpc: !GetAtt NetworkBase.Outputs.vpcID
+        SubnetAz01: !GetAtt NetworkBase.Outputs.SubnetAz01
+        SubnetAz02: !GetAtt NetworkBase.Outputs.SubnetAz02
+        RedisSecurityGroup:  !GetAtt SgElb.Outputs.RedisSecurityGroup
+  ServiceRDS:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - SgElb
+      - NetworkBase      
+    Properties:
+      TemplateURL: "https://psynet-devblock.s3-us-west-2.amazonaws.com/service-rds-mysql.yml"
+      Parameters:
+        Stage: !Ref Stage
+        ProjectName: !Ref ProjectName
+        Vpc: !GetAtt NetworkBase.Outputs.vpcID
+        SubnetAz01: !GetAtt NetworkBase.Outputs.SubnetAz01
+        SubnetAz02: !GetAtt NetworkBase.Outputs.SubnetAz02
+        SqlSecurityGroup:  !GetAtt SgElb.Outputs.SqlSecurityGroup
+        # EngineVersion: "11.2"
+        DBInstanceClass: "db.t3.small"
+        DBMasterUserPassword: 'psynet2020'
+  # ### Create ECS Cluster, Services, Taskdefination ###
+  ECS:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - ServicesRedis
+      - ServiceRDS
+      - IAM
+    Properties:
+      TemplateURL: "https://psynet-devblock.s3-us-west-2.amazonaws.com/ecs-cluster.yml"
+      Parameters:
+        Stage: !Ref Stage
+        EcsClusterName: !Ref ProjectName
+        TargetGroup: !GetAtt SgElb.Outputs.TargetGroup
+        EcsPort:  !GetAtt SgElb.Outputs.EcsPort
+        RoleArn: !GetAtt IAM.Outputs.EcsIamRoles
+        SubnetAz01: !GetAtt NetworkBase.Outputs.SubnetAz01
+        SubnetAz02: !GetAtt NetworkBase.Outputs.SubnetAz02
+        EcsSG1: !GetAtt SgElb.Outputs.EcsSecurityGroup
+        Redis: !GetAtt ServicesRedis.Outputs.RedisAdress
+        #CPU:
+        #MEM:
+        EcrImage: !Ref EcrImage

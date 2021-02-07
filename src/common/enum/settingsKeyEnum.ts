@@ -1,0 +1,17 @@
+export enum SETTING_KEY {
+  IC_WELCOME_ABOARD = "ic_welcome_aboard",
+  CL_WELCOME_ABOARD = "cl_welcome_aboard",
+  MAX_LEAD_REQUEST = "max_lead_request",
+  FROM_EMAIL = "from_email",
+  FROM_EMAIL_PRODUCTION = "from_email_production",
+  COUNSELOR_MAX_VIDEOS = "counselor_max_videos",
+  COUNSELOR_MAX_IMAGES = "counselor_max_images",
+  COUNSELOR_RECEIVE_LEADS_LIMIT_DAYS = "counselor_receive_leads_limit_days",
+  RETRY_LOGIN_COUNT = "retry_login_count",
+  ATTEMPT_LOCK_ACCOUNT_SECOND = "attempt_lock_account_second",
+  EXPIRE_RESET_CODE_SECOND = "expire_reset_code_second",
+  STRIPE_INVOICE_WEBHOOK_SIGNATURES = "stripe_invoice_webhook_signatures",
+  LEAD_HOURS_WARNING_EXPIRE = "lead_hours_warning_expire",
+  LEAD_HOURS_PENDING_EXPIRED = "lead_hours_pending_expired",
+  LEAD_HOURS_ACCEPTED_EXPIRED = "lead_hours_accepted_expired",
+}

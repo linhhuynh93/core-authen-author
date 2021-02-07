@@ -1,0 +1,160 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS CloudFormation create Network Stack VPC, Subnet, IG, Route tables
+Parameters:
+  Stage:
+   Type: String
+   Default: test
+   Description: Create base for ENV or Stage
+   AllowedValues:
+    - test
+    - dev
+    - staging
+    - pre-prod
+    - production
+  VpcAvailabilityZones:
+    Type: CommaDelimitedList
+    Description: 'Optional - Comma-delimited list of two VPC availability zones in which to create subnets'
+    Default: "us-west-2a, us-west-2b, us-west-2c, us-west-2d"
+  VpcCidrBlock:
+    Type: String
+    Description: Optional - CIDR/IP range for the VPC
+    Default: 10.0.0.0/16
+  SubnetCidrBlock1:
+    Type: String
+    Description: Optional - CIDR/IP range for the VPC
+    Default: 10.0.0.0/24
+  SubnetCidrBlock2:
+    Type: String
+    Description: Optional - CIDR/IP range for the VPC
+    Default: 10.0.1.0/24
+  ProjectName:
+    Type: String
+    Description: ECS Cluster Name
+    Default: psynet
+Conditions:
+  UseSpecifiedVpcAvailabilityZones: !Not [!Equals [!Join ['', !Ref 'VpcAvailabilityZones'],'']]
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidrBlock
+      EnableDnsHostnames: 'true'
+      EnableDnsSupport: 'true'
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join ['', ['ECS', !Ref 'ProjectName', '-', 'VPC']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created for ECS cluster', !Ref 'ProjectName']]
+  PublicSubnetAz1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !If
+       - UseSpecifiedVpcAvailabilityZones
+       - !Select ['0', !Ref 'VpcAvailabilityZones']
+       - !Select
+         - '0'
+         - Fn::GetAZs:
+             !Ref AWS::Region
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Ref 'SubnetCidrBlock1'
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join ['', ['ECS', !Ref 'ProjectName', '-', 'Public Subnet 1']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created for ECS cluster', !Ref 'ProjectName']]
+  PublicSubnetAz2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !If
+       - UseSpecifiedVpcAvailabilityZones
+       - !Select ['1', !Ref 'VpcAvailabilityZones']
+       - !Select
+         - '1'
+         - Fn::GetAZs:
+             !Ref AWS::Region
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Ref 'SubnetCidrBlock2'
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join ['', ['ECS', !Ref 'ProjectName', '-', 'Public Subnet 2']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created for ECS cluster', !Ref 'ProjectName']]
+  InternetGateway:
+    Type: "AWS::EC2::InternetGateway"
+    Properties:
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join ['', ['ECS', !Ref 'ProjectName', '-', 'InternetGateway']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created for ECS cluster', !Ref 'ProjectName']]
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref 'VPC'
+      InternetGatewayId: !Ref 'InternetGateway'
+  RouteViaIgw:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'VPC'
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join ['', ['ECS', !Ref 'ProjectName', '-', 'RouteTable']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created for ECS cluster', !Ref 'ProjectName']]
+  PublicRouteViaIgw:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref 'RouteViaIgw'
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref 'InternetGateway'
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref 'PublicSubnetAz1'
+      RouteTableId: !Ref 'RouteViaIgw'
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref 'PublicSubnetAz2'
+      RouteTableId: !Ref 'RouteViaIgw'
+#  Role:
+#    Type: "AWS::IAM::Role"
+#    Properties:
+#      AssumeRolePolicyDocument:
+#        Version: 2008-10-17
+#        Statement:
+#          - Sid: ''
+#            Effect: Allow
+#            Principal:
+#              Service: ecs.amazonaws.com
+#            Action: 'sts:AssumeRole'
+#      Description: String
+#      ManagedPolicyArns:
+#        - 'arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceRole'
+#      Tags:
+#        - Tag
+Outputs:
+  vpcID:
+    Description: Get VpcID
+    Value: !Ref 'VPC'
+  SubnetAz01:
+    Description: Expose the PublicSubnetAz1
+    Value: !Ref 'PublicSubnetAz1'
+  SubnetAz02:
+    Description: Expose the PublicSubnetAz2
+    Value: !Ref 'PublicSubnetAz2'
+#  RoleArn:
+#    Description: Get Role
+#    Value: !Ref Role
+    
